@@ -343,114 +343,152 @@ def calculate_pca(data):
         st.write(pd.DataFrame(pca.components_, columns=selected_columns, index=[f"PC{i+1}" for i in range(len(eigenvalues))]))
 
 def calculate_linearregression_predict(data=None):
-    st.subheader("Multiple Linear Regression Prediction Using Summation Values")
+    linearregression_option = st.session_state.get('linearregression_option', None)
+    
+    if linearregression_option == "OLS":
+        st.subheader("Multiple Linear Regression Prediction")
 
-    if data is not None:
-        # If data is provided, use it to calculate summations and perform regression
-        # Ensure that data has at least two columns (independent variables and dependent variable)
-        if data.shape[1] < 2:
-            st.error("Data must contain at least two columns for Linear Regression.")
-            return
+        if data is not None:
+            if data.shape[1] < 2:
+                st.error("Data must contain at least one independent variable and one dependent variable.")
+                return
 
-        # Assume the last column is the dependent variable (y) and others are independent variables (X)
-        X = data.iloc[:, :-1].values  # All columns except the last one (independent variables)
-        y = data.iloc[:, -1].values  # Last column (dependent variable)
+            # Allow user to select independent and dependent variables
+            st.write("### Select Independent and Dependent Variables")
+            all_columns = list(data.select_dtypes(include="number"))
+            selected_features = st.multiselect("Select feature columns (independent variables)", all_columns, default=all_columns[:-1])
+            selected_target = st.selectbox("Select target column (dependent variable)", all_columns, index=len(all_columns) - 1)
 
-        # Calculate summation values needed for regression coefficients
-        sum_x = np.sum(X, axis=0)  # Sum of all x values (Σx1, Σx2, ...)
-        sum_x2 = np.sum(X ** 2, axis=0)  # Sum of all x² values (Σx1², Σx2², ...)
-        sum_xy = np.sum(X * y[:, np.newaxis], axis=0)  # Sum of all x*y values (Σx1*y, Σx2*y, ...)
-        sum_y = np.sum(y)  # Sum of y values (Σy)
-        n = len(y)  # Number of data points (n)
+            if not selected_features or not selected_target:
+                st.error("Please select at least one feature and one target column.")
+                return
 
-        st.write("Calculated Summation Values:")
-        st.write(f"Sum of X values: {sum_x}")
-        st.write(f"Sum of X² values: {sum_x2}")
-        st.write(f"Sum of X*Y values: {sum_xy}")
-        st.write(f"Sum of Y values: {sum_y}")
+            # Extract selected features and target variable
+            X = data[selected_features].values
+            y = data[selected_target].values
+            n = len(y)
 
-        # Calculate the regression coefficients (b0, b1, ..., bn)
-        # Solve the normal equation: (X.T * X) * b = X.T * y
-        X_matrix = np.c_[np.ones(n), X]  # Add a column of ones for the intercept (b0)
-        coef = np.linalg.lstsq(X_matrix, y, rcond=None)[0]
+            # Add a column of ones for the intercept term (b0)
+            X_matrix = np.c_[np.ones(n), X]
 
-        st.write(f"Calculated coefficients (including intercept): {coef}")
+            # Compute normal equation components
+            XT_X = np.dot(X_matrix.T, X_matrix)  # (X^T * X)
+            XT_y = np.dot(X_matrix.T, y)  # (X^T * y)
 
-        # Display the coefficients
-        st.write(f"Intercept (b0): {coef[0]}")
-        for i in range(1, len(coef)):
-            st.write(f"Slope for x{i} (b{i}): {coef[i]}")
+            try:
+                # Solve for coefficients using normal equations
+                coef = np.linalg.solve(XT_X, XT_y)
 
-        # Predict for a given x value (user input)
-        x_input = []
-        for i in range(X.shape[1]):
-            x_value = st.number_input(f"Enter a value for x{i+1}", value=0.0)
-            x_input.append(x_value)
+                # Display coefficients
+                st.write("### Calculated Coefficients:")
+                coef_dict = {f"b{i} (for {col} if applicable)": coef[i] for i, col in enumerate(["Intercept"] + selected_features)}
+                st.write(coef_dict)
 
-        x_input = np.array(x_input)
-        x_input_with_intercept = np.insert(x_input, 0, 1)  # Add intercept term
+                # User input for prediction
+                st.write("### Predict New Value")
+                x_input = [st.number_input(f"Enter value for {col}", value=0.0) for col in selected_features]
+                prediction = np.dot(np.insert(x_input, 0, 1), coef)
+                st.write(f"**Predicted y value:** {prediction}")
 
-        prediction = np.dot(x_input_with_intercept, coef)
+            except np.linalg.LinAlgError:
+                st.error("Error: Unable to compute coefficients. The matrix may be singular.")
 
-        st.write(f"Predicted y value for x={x_input}: {prediction}")
+        else:
+            # Manual input for summations when dataset is not provided
+            num_features = st.number_input("Enter number of independent variables", min_value=1, value=1)
 
-    else:
-        # If no data is provided, ask for manual input for the summation values
-        num_features = st.number_input("Enter the number of features", min_value=1, value=1)
+            # Initialize lists to store summation inputs
+            sum_x = []
+            sum_xx = []
+            sum_xy = []
 
-        # Initialize lists to store summation values for each feature
-        sum_x = []
-        sum_x2 = []
-        sum_xy = []
+            for i in range(num_features):
+                sum_x.append(st.number_input(f"Σx{i+1}", value=0.0))
+                sum_xx.append(st.number_input(f"Σx{i+1}²", value=0.0))
+                sum_xy.append(st.number_input(f"Σx{i+1} * y", value=0.0))
 
-        # Input summation values for each feature
-        for i in range(num_features):
-            sum_x_i = st.number_input(f"Enter the sum of x{i+1} (Σx{i+1})", value=0.0)
-            sum_x2_i = st.number_input(f"Enter the sum of x{i+1}^2 (Σx{i+1}^2)", value=0.0)
-            sum_xy_i = st.number_input(f"Enter the sum of x{i+1}*y (Σx{i+1}*y)", value=0.0)
+            sum_y = st.number_input("Σy", value=0.0)
+            n = st.number_input("Enter number of data points (n)", min_value=1, value=1)
 
-            sum_x.append(sum_x_i)
-            sum_x2.append(sum_x2_i)
-            sum_xy.append(sum_xy_i)
+            # Construct normal equation matrix
+            A = np.zeros((num_features + 1, num_features + 1))
+            B = np.zeros(num_features + 1)
 
-        # Input the sum of y values (Σy)
-        sum_y = st.number_input("Enter the sum of y values (Σy)", value=0.0)
+            A[0, 0] = n
+            B[0] = sum_y
 
-        # Input the number of data points (n)
-        n = st.number_input("Enter the number of data points (n)", min_value=1, value=1)
+            for i in range(num_features):
+                A[0, i + 1] = A[i + 1, 0] = sum_x[i]
+                A[i + 1, i + 1] = sum_xx[i]
+                B[i + 1] = sum_xy[i]
 
-        # Calculate the regression coefficients (b0, b1, ..., bn)
-        # Calculate the sum of X (Σx), sum of X² (Σx²), and sum of XY (Σxy)
-        sum_xi = sum(sum_x)
-        sum_x2i = sum(sum_x2)
-        sum_xyi = sum(sum_xy)
+                for j in range(i + 1, num_features):
+                    A[i + 1, j + 1] = A[j + 1, i + 1] = st.number_input(f"Σx{i+1} * x{j+1}", value=0.0)
 
-        # Calculate the coefficients for multiple linear regression
-        # Start by creating the normal equation matrix and solving it
-        X = np.array([[sum_x2i, sum_xi],
-                      [sum_xi, n]])  # This is a simple 2x2 matrix for two features, you can expand for more features.
+            try:
+                # Solve for coefficients
+                coefficients = np.linalg.solve(A, B)
 
-        y = np.array([sum_xyi, sum_y])
+                st.write("Calculated Coefficients:")
+                st.write({f"b{i}": coefficients[i] for i in range(len(coefficients))})
 
-        # Solving for the coefficients b0, b1
-        try:
-            # Use numpy to solve the linear system
-            coefficients = np.linalg.solve(X, y)
-            b1, b0 = coefficients
-        except np.linalg.LinAlgError:
-            st.error("Unable to calculate coefficients due to linear dependency or invalid input.")
-            return
+                # User input for prediction
+                x_input = [st.number_input(f"Enter value for x{i+1}", value=0.0) for i in range(num_features)]
+                prediction = coefficients[0] + np.dot(coefficients[1:], x_input)
+                st.write(f"Predicted y value: {prediction}")
 
-        # Display the coefficients
-        st.write(f"Calculated coefficients:")
-        st.write(f"b0 (Intercept): {b0}")
-        st.write(f"b1 (Slope for x1): {b1}")
+            except np.linalg.LinAlgError:
+                st.error("Error: Unable to compute coefficients. The matrix may be singular.")
 
-        # Predict for a given x value (user input)
-        x_input = st.number_input("Enter a value of x for prediction", value=0.0)
-        prediction = b0 + b1 * x_input
+    elif linearregression_option == "WLS":
+        st.subheader("Weighted Least Squares Regression Prediction")
 
-        st.write(f"Predicted y value for x={x_input}: {prediction}")
+        if data is not None:
+            if data.shape[1] < 2:
+                st.error("Data must contain at least one independent variable and one dependent variable.")
+                return
+
+            st.write("### Select Independent and Dependent Variables")
+            all_columns = list(data.select_dtypes(include="number"))
+            selected_features = st.multiselect("Select feature columns (independent variables)", all_columns, default=all_columns[:-1])
+            selected_target = st.selectbox("Select target column (dependent variable)", all_columns, index=len(all_columns) - 1)
+
+            if not selected_features or not selected_target:
+                st.error("Please select at least one feature and one target column.")
+                return
+
+            X = data[selected_features].values
+            y = data[selected_target].values
+            n = len(y)
+
+            X_matrix = np.c_[np.ones(n), X]
+            XT_X = np.dot(X_matrix.T, X_matrix)
+            XT_y = np.dot(X_matrix.T, y)
+
+            try:
+                ols_coef = np.linalg.solve(XT_X, XT_y)
+                residuals = y - np.dot(X_matrix, ols_coef)
+                weights = 1 / (residuals**2 + 1e-8)
+                
+                st.write("### Computed Weights:")
+                st.write(weights)
+                
+                W = np.diag(weights)
+                XTWX = np.dot(X_matrix.T, np.dot(W, X_matrix))
+                XTWY = np.dot(X_matrix.T, np.dot(W, y))
+                wls_coef = np.linalg.solve(XTWX, XTWY)
+
+                st.write("### Calculated Coefficients (WLS):")
+                coef_dict = {f"b{i} (for {col} if applicable)": wls_coef[i] for i, col in enumerate(["Intercept"] + selected_features)}
+                st.write(coef_dict)
+
+                st.write("### Predict New Value")
+                x_input = [st.number_input(f"Enter value for {col}", value=0.0) for col in selected_features]
+                prediction = np.dot(np.insert(x_input, 0, 1), wls_coef)
+                st.write(f"**Predicted y value:** {prediction}")
+            except np.linalg.LinAlgError:
+                st.error("Error: Unable to compute coefficients. The matrix may be singular.")
+
 
 # Main function to handle different app sections
 def main():
@@ -462,7 +500,6 @@ def main():
 
     # Display hamburger icon and Main Menu text in sidebar
     with st.sidebar:
-        # Use HTML to create a hamburger menu icon with "Main Menu" label
         st.markdown("<div style='font-size: 30px; cursor: pointer;'>&#9776; Main Menu</div>", unsafe_allow_html=True)
 
         # Initialize session state for menu selections if not already present
@@ -472,15 +509,17 @@ def main():
         # Sidebar menu with nested structure
         selected = option_menu(
             menu_title=None,
-            options=["Visualizations", "Descriptive Statistics", "PCA", "Linear Regression"],
-            icons=["graph-up", "calculator", "diagram-3", None],
-            menu_icon="cast",  # Icon for the main menu
+            options=["Linear Regression", "Visualizations", "Descriptive Statistics", "PCA"],
+            icons=[None, "graph-up", "calculator", "diagram-3"],
+            menu_icon="cast",
             default_index=0,
         )
         
+        # Update current_menu based on selection
+        st.session_state.current_menu = selected
+        
         # Submenu based on main selection
         if selected == "Visualizations":
-            st.session_state.current_menu = "Visualizations"
             viz_option = option_menu(
                 menu_title=None,
                 options=["Line Plot", "Scatter Plot", "Histogram", "Box Plot", 
@@ -490,9 +529,10 @@ def main():
             )
             st.session_state.visualization_option = viz_option
             st.session_state.stats_option = None
+            st.session_state.pca_option = None
+            st.session_state.linearregression_option = None
             
         elif selected == "Descriptive Statistics":
-            st.session_state.current_menu = "Descriptive Statistics"
             stats_option = option_menu(
                 menu_title=None,
                 options=["Mean", "Median", "Mode", "Variance", "Standard Deviation", "Minimum", "Maximum", 
@@ -500,31 +540,48 @@ def main():
             )
             st.session_state.stats_option = stats_option
             st.session_state.visualization_option = None
+            st.session_state.pca_option = None
+            st.session_state.linearregression_option = None
+            
         elif selected == "PCA":
-            st.session_state.current_menu = "PCA"
             pca_option = option_menu(
                 menu_title=None,
                 options=["Principal Component Analysis"]
             )
             st.session_state.pca_option = pca_option
             st.session_state.visualization_option = None
+            st.session_state.stats_option = None
+            st.session_state.linearregression_option = None
+            
         elif selected == "Linear Regression":
-            st.session_state.current_menu = "Linear Regression"
             linearregression_option = option_menu(
                 menu_title=None,
-                options=["Linear Regression"]
+                options=["OLS","WLS"]
             )
             st.session_state.linearregression_option = linearregression_option
             st.session_state.visualization_option = None 
             st.session_state.pca_option = None
+            st.session_state.stats_option = None
 
     # Main content area
     if data is not None:
         st.success("File Uploaded Successfully")
         data1 = pd.read_excel(data)
-        calculate_linearregression_predict(data1)  # Pass the data to the function
+        
+        # Call the appropriate function based on the current menu selection
+        if st.session_state.current_menu == "Linear Regression":
+            calculate_linearregression_predict(data1)
+        elif st.session_state.current_menu == "Visualizations":
+            visualize_data(data1)
+        elif st.session_state.current_menu == "Descriptive Statistics":
+            calculate_statistics(data1)
+        elif st.session_state.current_menu == "PCA":
+            calculate_pca(data1)
     else:
-        calculate_linearregression_predict()  # Run the calculation with manual input
+        if st.session_state.current_menu == "Linear Regression":
+            calculate_linearregression_predict()
+        else:
+            st.warning("Please upload a file to proceed with the selected analysis.")
 
 if __name__ == '__main__':
     main()
