@@ -8,3 +8,5 @@ seaborn
 streamlit_option_menu
 plotly
 scipy
+stats
+StandardScaler
